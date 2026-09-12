@@ -23,6 +23,20 @@ export type ClientSettings = {
   requestMix: { getPercent: number }
   /** Size of the key pool this client reads and writes, e.g. resource-1..3. */
   resourceKeyCount: number
+  /**
+   * Share of requests aimed at one designated hot key (HOT_KEY), modelling a
+   * viral link or trending item. The rest spread evenly over the other keys.
+   *
+   * Deliberately absent rather than defaulted to 0, and so deliberately NOT in
+   * DEFAULT_SETTINGS. `fingerprintTopology` in grading.ts stringifies a node's
+   * whole settings object, so a new key present on every client would change
+   * every saved baseline's fingerprint — the same reason the queue switch was
+   * derived from maxQueueDepth instead of getting a flag of its own. Undefined
+   * and 0 mean the same thing to `pickResourceKey`; undefined also serialises
+   * away, so a client nobody has touched fingerprints exactly as it did before
+   * this setting existed.
+   */
+  hotKeyPercent?: number
 }
 
 export type ServerSettings = {
@@ -342,6 +356,14 @@ export type InFlightRequest = {
   queuedAt?: number
   /** Which key this request reads or writes. */
   resourceKey: string
+  /**
+   * This request was aimed at the designated hot key by a client configured for
+   * skew. Recorded rather than re-derived, because `resourceKey === HOT_KEY` is
+   * not the same question: with no hot-key share configured, resource-1 is an
+   * ordinary key that a third of default traffic lands on, and flagging it would
+   * be noise.
+   */
+  isHotKey?: boolean
   /** Recorded at lookup time, so the return legs can be labelled honestly. */
   cacheOutcome?: 'hit' | 'miss'
   /** Whether a replica-served read was up to date. */
@@ -765,6 +787,67 @@ export const countCacheBusy = (requests: InFlightRequest[], cacheId: string) =>
       (r.phase === 'cache-lookup' || r.phase === 'cache-writing'),
   ).length
 
+/**
+ * The window in which a missed read is "falling through to the database": from
+ * the moment the lookup comes back empty to the moment the data is on its way
+ * home. Nothing here has an answer yet, so every request in this state for the
+ * same key is duplicated work.
+ *
+ * db-inbound is deliberately excluded — by then the read is done and the pile-up
+ * is over.
+ */
+const FALLING_THROUGH_PHASES: RequestPhase[] = [
+  'cache-lookup',
+  'cache-inbound',
+  'db-outbound',
+  'db-queued',
+  'db-processing',
+]
+
+/**
+ * How many concurrent misses on one key count as a stampede.
+ *
+ * Two requests overlapping on a cold key is ordinary; it happens on the first
+ * read of any key. Three at once on the same key means the cache is not
+ * absorbing the concurrency it exists to absorb.
+ */
+export const STAMPEDE_THRESHOLD = 3
+
+/**
+ * Keys this cache is currently being stampeded on, with the number of requests
+ * piling onto each. Derived from live request state rather than recorded as an
+ * event: a stampede is a moment, not a thing that happened.
+ */
+export function stampedingKeys(
+  requests: InFlightRequest[],
+  cacheId: string,
+  threshold: number = STAMPEDE_THRESHOLD,
+): { key: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const r of requests) {
+    if (r.cacheNodeId !== cacheId) continue
+    if (r.cacheOutcome !== 'miss') continue
+    // cacheAction marks the populate/write side trip, which shares two of the
+    // phases above but is the request going home, not piling on.
+    if (r.cacheAction !== undefined) continue
+    if (!FALLING_THROUGH_PHASES.includes(r.phase)) continue
+    counts.set(r.resourceKey, (counts.get(r.resourceKey) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= threshold)
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+/** The same census as a stable string, for a component selector. */
+export const stampedeSignature = (
+  requests: InFlightRequest[],
+  cacheId: string,
+) =>
+  stampedingKeys(requests, cacheId)
+    .map((s) => `${s.key}:${s.count}`)
+    .join(',')
+
 export const lbSettingsOf = (node: Node | undefined): LoadBalancerSettings => {
   const data = dataOf(node)
   return data?.componentType === 'loadbalancer'
@@ -951,9 +1034,33 @@ export const isBackendUnhealthy = (
   server: Node,
 ): boolean => isNodeKilled(server) || isServerRejecting(requests, server)
 
-/** Picks one key from the client's pool, e.g. resource-1 .. resource-3. */
-export const pickResourceKey = (count: number) =>
-  `resource-${1 + Math.floor(Math.random() * Math.max(1, count))}`
+/**
+ * The key hot traffic piles onto. The first key in the pool by convention, so
+ * skew needs one number rather than a number and a key picker.
+ */
+export const HOT_KEY = 'resource-1'
+
+/**
+ * Picks one key from the client's pool, e.g. resource-1 .. resource-3.
+ *
+ * With no hot-key share this is the original uniform draw, reached before any
+ * new arithmetic runs: an unset or zero `hotKeyPercent` must select keys
+ * exactly as it did before hot keys existed, including consuming the same
+ * single Math.random() call.
+ *
+ * Above zero, the remaining traffic is drawn from the pool MINUS the hot key.
+ * Leaving the hot key in that draw would push its real share above the
+ * configured number — at 75% of 10 keys it would land at 77.5% — and the point
+ * of the setting is that the share you ask for is the share you get.
+ */
+export const pickResourceKey = (count: number, hotKeyPercent = 0) => {
+  const pool = Math.max(1, count)
+  if (hotKeyPercent <= 0) return `resource-${1 + Math.floor(Math.random() * pool)}`
+  // A one-key pool is entirely hot key; there is no "rest" to spread.
+  if (pool === 1 || Math.random() * 100 < hotKeyPercent) return HOT_KEY
+  // resource-2 .. resource-<pool>: uniform over everything but the hot key.
+  return `resource-${2 + Math.floor(Math.random() * (pool - 1))}`
+}
 
 /** Picks GET or POST from the client's configured mix. */
 export const pickMethod = (getPercent: number): RequestMethod =>
@@ -1586,7 +1693,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
     const clientSettings = clientSettingsOf(client)
     const method = pickMethod(clientSettings.requestMix.getPercent)
-    const resourceKey = pickResourceKey(clientSettings.resourceKeyCount)
+    const resourceKey = pickResourceKey(
+      clientSettings.resourceKeyCount,
+      clientSettings.hotKeyPercent,
+    )
+    const isHotKey =
+      (clientSettings.hotKeyPercent ?? 0) > 0 && resourceKey === HOT_KEY
 
     // A POST with nowhere to persist is refused outright rather than quietly
     // faked. Chosen over a server-only fallback because it reuses the existing
@@ -1631,6 +1743,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       phase: viaLb ? 'lb-outbound' : 'outbound',
       method,
       resourceKey,
+      isHotKey,
       kind: 'request',
       legDurationMs: frontDoorLatencyMs,
     }
@@ -1662,7 +1775,11 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       loadBalancerLabel: viaLb ? displayName(nodes, frontId) : null,
       servedByNodeId: viaLb ? null : serverId,
       events: [
-        { ts: now, hop: 'request_created', detail: `${method} ${resourceKey}` },
+        {
+          ts: now,
+          hop: 'request_created',
+          detail: `${method} ${resourceKey}${isHotKey ? ' (hot key)' : ''}`,
+        },
         {
           ts: now,
           hop: 'outbound_start',

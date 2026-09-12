@@ -20,6 +20,19 @@ const MISS_COLOR = '#d97706'
 /** A stale answer is a correctness failure, not a warning. */
 const STALE_COLOR = '#dc2626'
 const SYNC_COLOR = '#64748b'
+/** Hot-key traffic. Rose, used nowhere else, so skew is unmistakable. */
+const HOT_COLOR = '#e11d48'
+
+/**
+ * Lucide's flame, on its native 24x24 grid.
+ *
+ * A tint alone would not do here: colour on a packet already names its tier
+ * (blue read, orange write, violet cache, green answer), so recolouring hot
+ * traffic would trade one thing you can see for another. The flame is additive
+ * — a hot POST still looks like a POST.
+ */
+const FLAME_PATH =
+  'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'
 
 type PacketStyle = {
   shape: 'circle' | 'diamond'
@@ -132,9 +145,21 @@ function RequestPacket({ request, path, forward }: PacketProps) {
 
   const style = packetStyle(request)
   const radius = style.small ? 4 : 6
+  // A background flush carries no key of its own, so it is never marked hot.
+  const isHot = request.isHotKey === true && request.kind === 'request'
 
   return (
     <g>
+      {isHot && (
+        // Ring first, so the packet itself draws on top of it.
+        <circle
+          className="rf-hot-ring"
+          r={radius + 4}
+          fill="none"
+          stroke={HOT_COLOR}
+          strokeWidth={1.5}
+        />
+      )}
       {style.shape === 'diamond' ? (
         <rect
           x={-5.5}
@@ -155,12 +180,25 @@ function RequestPacket({ request, path, forward }: PacketProps) {
           strokeDasharray={style.dashed ? '2 2' : undefined}
         />
       )}
+      {isHot && (
+        // Scaled off the 24x24 grid the path is drawn on, then offset so the
+        // flame sits just above and left of the dot rather than over it.
+        <g transform={`translate(${-radius - 15}, ${-radius - 14}) scale(0.55)`}>
+          <path
+            d={FLAME_PATH}
+            fill={HOT_COLOR}
+            stroke="#ffffff"
+            strokeWidth={2.5}
+            paintOrder="stroke"
+          />
+        </g>
+      )}
       <text
         x={radius + 4}
         y={-7}
         fontSize={style.small ? 8 : 9}
         fontWeight={600}
-        fill={style.color}
+        fill={isHot ? HOT_COLOR : style.color}
         stroke="#ffffff"
         strokeWidth={3}
         paintOrder="stroke"

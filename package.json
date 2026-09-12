@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vite build --ssr tests/all.test.ts --outDir .testout --logLevel error && vite build --ssr tests/simulation.test.ts --outDir .testout --emptyOutDir false --logLevel error && node --test .testout/all.test.js .testout/simulation.test.js"
+    "test": "vite build --ssr tests/all.test.ts --outDir .testout --logLevel error && vite build --ssr tests/simulation.test.ts --outDir .testout --emptyOutDir false --logLevel error && vite build --ssr tests/hotkey.test.ts --outDir .testout --emptyOutDir false --logLevel error && node --test .testout/all.test.js .testout/simulation.test.js .testout/hotkey.test.js"
   },
   "dependencies": {
     "@xyflow/react": "^12.11.6",

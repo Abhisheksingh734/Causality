@@ -31,6 +31,25 @@ body,
   stroke-linecap: round;
 }
 
+/* ---- hot-key traffic ---- */
+/* A slow breathe rather than a hard blink: at 75% skew most of the dots on the
+   canvas carry this ring, and a blink on all of them would be unreadable. */
+@keyframes rf-hot-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    stroke-width: 1.5;
+  }
+  50% {
+    opacity: 0.95;
+    stroke-width: 2.5;
+  }
+}
+
+.rf-hot-ring {
+  animation: rf-hot-pulse 900ms ease-in-out infinite;
+}
+
 .rf-fade-in {
   animation: rf-fade-in 260ms ease-out both;
 }

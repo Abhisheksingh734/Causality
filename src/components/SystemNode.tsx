@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Power, Settings, Trash2, TriangleAlert, X } from 'lucide-react'
+import { Flame, Power, Settings, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { track } from '../analytics'
 import { COMPONENT_META } from '../componentTypes'
@@ -17,6 +17,7 @@ import {
   countServerActive,
   countServerQueued,
   DEFAULT_SETTINGS,
+  stampedeSignature,
   useFlowStore,
   type SystemNode as SystemNodeType,
 } from '../store'
@@ -161,6 +162,13 @@ function SystemNode({ id, data, selected }: NodeProps<SystemNodeType>) {
     (state) => state.cacheStats[id]?.lostWrites ?? 0,
   )
   const cacheBusy = useFlowStore((state) => countCacheBusy(state.requests, id))
+  // A string, so this selector stays referentially stable across the dozen-odd
+  // store writes every request performs. Sorted worst-first by stampedingKeys,
+  // so the head of the list is the one worth naming on the card.
+  const stampede = useFlowStore((state) =>
+    isCache ? stampedeSignature(state.requests, id) : '',
+  )
+  const [stampedeKey, stampedeCount] = stampede.split(',')[0]?.split(':') ?? []
   const routed = useFlowStore((state) => state.lbStats[id]?.routed ?? 0)
   const served = useFlowStore((state) => state.serverStats[id]?.served ?? 0)
   // Built as a string so this selector stays referentially stable.
@@ -289,6 +297,26 @@ function SystemNode({ id, data, selected }: NodeProps<SystemNodeType>) {
 
       {isReplica && servingStale && (
         <span className="pointer-events-none absolute -inset-2 animate-ping rounded-xl border-2 border-amber-500 opacity-80" />
+      )}
+
+      {/* Cache stampede: several requests for the SAME key all missing at once
+          and all going to the database separately. It is not a failure and
+          costs nothing visible in the counters — hit ratio barely moves — so
+          without this the only trace is a cluster of cache_miss lines sharing a
+          timestamp in the Log panel. */}
+      {isCache && stampedeKey && !isKilled && (
+        <>
+          <span className="pointer-events-none absolute -inset-2 animate-ping rounded-xl border-2 border-rose-500 opacity-80" />
+          <Badge
+            tone="danger"
+            solid
+            uppercase={false}
+            className="pointer-events-none absolute -bottom-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap shadow-sm"
+          >
+            <Flame className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
+            stampede: {stampedeCount}× {stampedeKey}
+          </Badge>
+        </>
       )}
 
       {rejecting && (

@@ -168,6 +168,71 @@ export const PROBLEMS: Problem[] = [
     ],
   },
   {
+    id: 'viral-link',
+    title: 'The Viral Link',
+    difficulty: 'Intermediate',
+    summary:
+      'One link is getting almost all the traffic. Your cache was tuned for an even spread.',
+    brief: [
+      "Your link shortener just got picked up by a celebrity's post. One link is now getting almost all the traffic. Your caching setup was tuned for evenly-spread requests — find out what actually happens when it isn't.",
+      'Step 1 — Reproduce it.\nSet the rate to 12/s and run auto-fire for 20-30 seconds.\nWatch the hot key\'s requests — they travel with a flame marker — and open the Log panel. Look for multiple simultaneous cache misses on the same key right as its TTL expires.',
+      'Step 2 — Understand the cost.\nCheck the Latency panel filtered to the hot key\'s requests versus everything else, and check whether the Database shows real strain at those expiry moments.',
+      'Step 3 — Fix it.\nReconfigure the system so the hot key\'s traffic stops causing repeated pile-ups on the database, without breaking the benefit of caching for the rest of your traffic.',
+      'A note on what you are looking for: none of this shows up as a failure. Every request succeeds, and the hit ratio on the Cache card stays high — the hot key is a hit most of the time, because most of the time it is cached. What moves is p95, and what the Database is doing in the half-second after each expiry.',
+    ],
+    // Deliberately unscored, for the same reason The Vanishing Update is: a
+    // criterion for a phenomenon nobody has measured yet is how The Flash Sale
+    // spent four rounds grading the wrong thing. The panels show this one
+    // plainly enough to read by hand until there is evidence for what a
+    // discriminating criterion would actually key on.
+    nodes: [
+      node('node-1', 'client', 0, 140, {
+        // A redirect workload is reads, essentially all of them.
+        requestMix: { getPercent: 100 },
+        resourceKeyCount: 10,
+        hotKeyPercent: 75,
+      }),
+      node('node-2', 'server', 1, 140, {
+        // Measured at 8, 12 and 20 workers: identical stampede behaviour and
+        // zero failures at all three, so the server is decisively not the
+        // bottleneck here. 12 is the smallest of those that is still obviously
+        // not the answer the problem is fishing for.
+        concurrencyLimit: 12,
+        baseProcessingMs: 20,
+        maxQueueDepth: 10,
+        networkLatencyMs: 30,
+        timeoutMs: 3000,
+      }),
+      node('node-3', 'cache', 2, 40, {
+        writePolicy: 'cache-aside',
+        // Short enough that expiry-driven stampedes recur several times inside
+        // a 25s run: measured 4-5 distinct episodes on the hot key per run,
+        // against 2 (cold start only) at 30s.
+        ttlSeconds: 4,
+        hitLatencyMs: 20,
+      }),
+      node('node-4', 'database', 2, 260, {
+        networkLatencyMs: 10,
+        readLatencyMs: 400,
+        writeLatencyMs: 800,
+        // Tuned from measurement, not guessed. Across 25s runs at 12/s with
+        // everything else fixed:
+        //   1 connection  9 failures, p95 2822ms, queue pinned full — collapses
+        //   2 connections 0 failures, p95 ~1000ms, queue peaks 3-5 of 10
+        //   3 connections 0 failures, p95  640ms, queue peaks 2
+        //   4 connections 0 failures, p95  640ms, queue peaks 1
+        // 2 is the only one where a stampede is unmistakable and nothing fails,
+        // which is the lesson: this is not an outage, it is waste. Five trials
+        // at 2 gave 0 failures every time and p95 944-1091ms, so it is not one
+        // of those at-capacity configurations that flips between runs.
+        concurrencyLimit: 2,
+        maxQueueDepth: 10,
+        timeoutMs: 3000,
+      }),
+    ],
+    edges: [edge('node-1', 'node-2'), edge('node-2', 'node-3'), edge('node-2', 'node-4')],
+  },
+  {
     id: 'flash-sale',
     title: 'The Flash Sale',
     difficulty: 'Hard',

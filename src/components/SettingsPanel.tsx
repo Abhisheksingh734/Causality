@@ -220,6 +220,8 @@ function PanelBody({
   switch (data.componentType) {
     case 'client': {
       const percent = data.settings.requestMix.getPercent
+      const hotPercent = data.settings.hotKeyPercent ?? 0
+      const keyCount = data.settings.resourceKeyCount
       return (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -252,16 +254,73 @@ function PanelBody({
           <NumberField
             label="Resource key pool"
             suffix="distinct keys"
-            value={data.settings.resourceKeyCount}
+            value={keyCount}
             min={1}
             max={10}
             onCommit={(resourceKeyCount) => update({ resourceKeyCount })}
           />
           <p className="rounded bg-slate-50 p-2 text-[10px] leading-relaxed text-slate-500">
             Each request picks one key at random from resource-1 to resource-
-            {data.settings.resourceKeyCount}. A smaller pool means more cache
-            hits.
+            {keyCount}. A smaller pool means more cache hits.
           </p>
+
+          <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[11px] font-medium text-slate-600">
+                Hot key traffic (%)
+              </span>
+              <span className="text-sm font-semibold text-slate-800">
+                {hotPercent}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={hotPercent}
+              className="w-full accent-rose-600"
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                // Back at zero the key is cleared rather than stored as 0, so a
+                // client returns to the exact settings shape it had before this
+                // control was ever touched. grading.ts fingerprints the whole
+                // settings object, and an extra key would make an untouched
+                // design look like a changed one.
+                update({ hotKeyPercent: next === 0 ? undefined : next })
+              }}
+            />
+            <div className="flex justify-between text-[10px] text-slate-400">
+              <span>0% (even spread)</span>
+              <span>100% (one key only)</span>
+            </div>
+            <p className="rounded bg-slate-50 p-2 text-[10px] leading-relaxed text-slate-500">
+              When above 0, this percentage of requests targets a single
+              designated &lsquo;hot&rsquo; key, simulating a viral link or
+              trending item. The rest spread evenly across the remaining keys.
+              {hotPercent > 0 && (
+                <>
+                  {' '}
+                  <span className="font-medium text-rose-600">
+                    resource-1 is the hot key
+                  </span>
+                  {keyCount > 1 ? (
+                    <>
+                      ; the other {hotPercent === 100 ? '' : `${100 - hotPercent}% spreads over `}
+                      {keyCount - 1} key{keyCount === 2 ? '' : 's'}
+                      {hotPercent === 100 ? ' never get traffic' : ''}. Its
+                      packets travel with a flame marker.
+                    </>
+                  ) : (
+                    <>
+                      , and it is the only key in the pool — raise the pool size
+                      for the skew to mean anything.
+                    </>
+                  )}
+                </>
+              )}
+            </p>
+          </div>
         </div>
       )
     }
