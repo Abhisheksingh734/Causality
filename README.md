@@ -129,7 +129,10 @@ Cache-aside · Write-through · Write-back · Write-around · Cache stampede · 
 
 ## What's next
 
-Retry with backoff. Rate limiting and per-client quotas. Comparing two designs side by side. And more problems, covering the classic interview questions.
+Retry with backoff.
+Rate limiting and per-client quotas. 
+Comparing two designs side by side. 
+And more problems, covering the classic interview questions.
 
 ---
 
