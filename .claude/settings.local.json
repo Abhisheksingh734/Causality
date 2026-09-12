@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npx create-vite@9.2.0 . --template react-ts --yes)",
+      "Bash(echo \"EXIT:$?\")"
+    ]
+  }
+}

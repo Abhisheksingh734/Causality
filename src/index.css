@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The canvas fills the viewport, so every ancestor needs a real height. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* ---- high-traffic edge "flow mode" (rendering only) ---- */
+@keyframes rf-flow-march {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.rf-flow-dash {
+  fill: none;
+  stroke-dasharray: 6 6;
+  stroke-linecap: round;
+  animation-name: rf-flow-march;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.rf-flow-glow {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.rf-fade-in {
+  animation: rf-fade-in 260ms ease-out both;
+}
+
+@keyframes rf-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
