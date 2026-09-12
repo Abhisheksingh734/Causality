@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { track } from '../analytics'
 import { COMPONENT_META } from '../componentTypes'
 import { SIDE_PANEL_WIDTH } from './panelLayout'
 import {
@@ -279,11 +280,14 @@ function PanelBody({
             <select
               className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none transition-colors focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
               value={s.routingAlgorithm}
-              onChange={(event) =>
-                update({
-                  routingAlgorithm: event.target.value as RoutingAlgorithm,
+              onChange={(event) => {
+                const routingAlgorithm = event.target.value as RoutingAlgorithm
+                update({ routingAlgorithm })
+                track('load_balancer_algorithm_set', {
+                  algorithm: routingAlgorithm,
+                  healthCheckEnabled: s.healthCheckEnabled,
                 })
-              }
+              }}
             >
               {ROUTING_ALGORITHMS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -306,9 +310,16 @@ function PanelBody({
               type="checkbox"
               className="mt-0.5 accent-blue-600"
               checked={s.healthCheckEnabled}
-              onChange={(event) =>
-                update({ healthCheckEnabled: event.target.checked })
-              }
+              onChange={(event) => {
+                const healthCheckEnabled = event.target.checked
+                update({ healthCheckEnabled })
+                // Same event: both controls describe how this LB routes, and
+                // each one carries the other's current value.
+                track('load_balancer_algorithm_set', {
+                  algorithm: s.routingAlgorithm,
+                  healthCheckEnabled,
+                })
+              }}
             />
             <span className="flex flex-col">
               <span className="text-[11px] font-medium text-slate-600">
@@ -412,9 +423,11 @@ function PanelBody({
             <select
               className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none transition-colors focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
               value={s.writePolicy}
-              onChange={(event) =>
-                update({ writePolicy: event.target.value as WritePolicy })
-              }
+              onChange={(event) => {
+                const writePolicy = event.target.value as WritePolicy
+                update({ writePolicy })
+                track('cache_write_policy_set', { policy: writePolicy })
+              }}
             >
               {WRITE_POLICIES.map((policy) => (
                 <option key={policy.value} value={policy.value}>
@@ -485,9 +498,11 @@ function PanelBody({
             <select
               className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-800 outline-none transition-colors focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
               value={s.role}
-              onChange={(event) =>
-                update({ role: event.target.value as DatabaseRole })
-              }
+              onChange={(event) => {
+                const role = event.target.value as DatabaseRole
+                update({ role })
+                track('database_role_set', { role })
+              }}
             >
               {DATABASE_ROLES.map((option) => (
                 <option key={option.value} value={option.value}>

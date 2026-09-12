@@ -1,5 +1,6 @@
 import { GraduationCap } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { track } from '../analytics'
 import { saveNow } from '../persistence'
 import { PROBLEMS, type Difficulty } from '../problems'
 import Badge, { type BadgeTone } from './Badge'
@@ -69,6 +70,9 @@ function ProblemsMenu() {
                     // and opens the brief.
                     loadProblem(problem)
                     saveNow()
+                    // Only the dropdown counts as selecting a problem —
+                    // "Restore starting setup" reloads the same one.
+                    track('problem_selected', { problemName: problem.title })
                     setOpen(false)
                   }}
                   className="flex w-full flex-col gap-1 border-b border-slate-100 px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-blue-50/50"

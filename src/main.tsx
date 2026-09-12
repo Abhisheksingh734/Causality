@@ -5,6 +5,7 @@ import './index.css'
 // node/handle/control styles are not reset away.
 import '@xyflow/react/dist/style.css'
 import App from './App.tsx'
+import { initAnalytics, track } from './analytics'
 import { startEdgeFlowSampler } from './edgeFlow'
 import { hydrateFromStorage, startAutoSave } from './persistence'
 
@@ -13,6 +14,11 @@ import { hydrateFromStorage, startAutoSave } from './persistence'
 hydrateFromStorage()
 startAutoSave()
 startEdgeFlowSampler()
+
+// Also out here for the same reason: one session, one app_loaded. Both calls
+// are no-ops unless VITE_POSTHOG_KEY is set.
+initAnalytics()
+track('app_loaded')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

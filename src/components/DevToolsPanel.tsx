@@ -1,5 +1,6 @@
 import { Check, ClipboardCopy, Download, Upload, Wrench, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { track } from '../analytics'
 import {
   buildFilteredExport,
   DEFAULT_FILTERS,
@@ -104,6 +105,7 @@ function DevToolsPanel() {
       return
     loadSetup(result.nodes, result.edges)
     saveNow()
+    track('dev_tools_import_used')
     setImportNote({
       kind: 'ok',
       text:
@@ -120,6 +122,15 @@ function DevToolsPanel() {
       null,
       2,
     )
+
+  // Downloading and copying are the same act — taking the log away — so they
+  // report the same event, distinguished by `method`.
+  const trackExport = (method: 'download' | 'clipboard') =>
+    track('log_exported', {
+      filtered: !isDefaultFilters(filters),
+      entryCount: matched.length,
+      method,
+    })
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-6">
@@ -325,7 +336,10 @@ function DevToolsPanel() {
               <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => downloadJson(filteredFilename(), snapshot())}
+                  onClick={() => {
+                    downloadJson(filteredFilename(), snapshot())
+                    trackExport('download')
+                  }}
                   className="flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-blue-700"
                 >
                   <Download className="h-3.5 w-3.5" />
@@ -334,7 +348,11 @@ function DevToolsPanel() {
                 <button
                   type="button"
                   aria-label="Copy filtered export to clipboard"
-                  onClick={async () => setCopied(await copyText(snapshot()))}
+                  onClick={async () => {
+                    const ok = await copyText(snapshot())
+                    setCopied(ok)
+                    if (ok) trackExport('clipboard')
+                  }}
                   className={`rounded-md border p-1.5 transition-colors ${
                     copied
                       ? 'border-green-200 bg-green-50 text-green-600'

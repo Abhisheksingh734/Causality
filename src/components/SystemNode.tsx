@@ -1,6 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Power, Settings, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { track } from '../analytics'
 import { COMPONENT_META } from '../componentTypes'
 import Badge from './Badge'
 import {
@@ -417,6 +418,9 @@ function SystemNode({ id, data, selected }: NodeProps<SystemNodeType>) {
                 // never also opens the settings panel.
                 event.stopPropagation()
                 fireRequest(id)
+                // Tracked here rather than in the store, because auto-fire
+                // calls the very same action once per request.
+                track('simulation_started', { mode: 'manual' })
               }}
             >
               Fire Request

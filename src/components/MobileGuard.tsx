@@ -1,5 +1,6 @@
 import { Network, TriangleAlert } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
+import { track } from '../analytics'
 import { SURFACE } from '../design'
 
 /**
@@ -53,6 +54,13 @@ function writeSnoozedAt(at: number | null) {
 }
 
 function GuardScreen({ onContinue }: { onContinue: () => void }) {
+  // This component mounts exactly when the guard takes over the app and
+  // unmounts when it hands back, so mount is the one honest place to count a
+  // showing — a render-time call would fire on every resize event.
+  useEffect(() => {
+    track('mobile_guard_shown')
+  }, [])
+
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 px-6">
       <div className={`flex w-full max-w-sm flex-col gap-4 ${SURFACE} px-5 py-6`}>
@@ -162,6 +170,7 @@ function MobileGuard({ children }: { children: ReactNode }) {
         const now = Date.now()
         writeSnoozedAt(now)
         setSnoozeEndsAt(now + SNOOZE_MS)
+        track('mobile_guard_continue_anyway_clicked')
       }}
     />
   )

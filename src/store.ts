@@ -11,6 +11,7 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import { create } from 'zustand'
+import { track } from './analytics'
 import type { BaselineMetrics } from './grading'
 import type { ComponentType } from './componentTypes'
 
@@ -1238,6 +1239,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       } as SystemNodeData,
     }
     set({ nodes: [...get().nodes, node] })
+    track('node_added', { componentType: type })
   },
 
   logEvent: (requestId, hop, detail) => {
@@ -1424,9 +1426,18 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   setAutoFiring: (on) => {
+    // Only a stopped-to-running transition is a started run; the auto-stop and
+    // every reset call this too.
+    const starting = on && !get().isAutoFiring
     // Stamping the start here means the readout measures the actual run, not
     // whenever a component happened to mount.
     set({ isAutoFiring: on, autoFireStartedAt: on ? Date.now() : null })
+    if (starting) {
+      track('simulation_started', {
+        mode: 'auto_fire',
+        rps: get().requestsPerSecond,
+      })
+    }
   },
 
   setRunDuration: (seconds) => {
@@ -3320,6 +3331,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           ts: Date.now(),
         },
       ].slice(-NODE_EVENT_CAP),
+    })
+
+    track(nextKilled ? 'node_killed' : 'node_revived', {
+      componentType: data.componentType,
     })
 
     if (!nextKilled) return

@@ -6,6 +6,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { track } from '../analytics'
 import {
   fingerprintTopology,
   gradeProblem,
@@ -156,25 +157,36 @@ function ProblemGrading({ problem }: { problem: Problem }) {
       wasStartingConfig: isStartingSetup,
     })
     setGrade(null)
+    track('problem_baseline_recorded', { problemName: problem.title })
   }
 
   const onCheck = () => {
     const { metrics, nodeEvents, baselines, nodes, edges, writeDurability, pendingSyncs } =
       useFlowStore.getState()
     if (!criteria) return
-    setGrade(
-      gradeProblem({
-        criteria,
-        baseline: baselines[problem.id],
-        samples: metrics,
-        nodeEvents,
-        currentRps: requestsPerSecond,
-        nodes,
-        edges,
-        durability: writeDurability,
-        pendingWrites: Object.values(pendingSyncs).reduce((a, b) => a + b, 0),
-      }),
-    )
+    const result = gradeProblem({
+      criteria,
+      baseline: baselines[problem.id],
+      samples: metrics,
+      nodeEvents,
+      currentRps: requestsPerSecond,
+      nodes,
+      edges,
+      durability: writeDurability,
+      pendingWrites: Object.values(pendingSyncs).reduce((a, b) => a + b, 0),
+    })
+    setGrade(result)
+    // Every press is worth an event, including the ones the grader refuses to
+    // score — those are the states people get stuck in.
+    track('problem_check_solution', {
+      problemName: problem.title,
+      overallPass: result.status === 'graded' && result.passed,
+      criteriaResults:
+        result.status === 'graded'
+          ? result.results.map((r) => ({ label: r.label, passed: r.passed }))
+          : [],
+      status: result.status,
+    })
   }
 
   if (!criteria) {
