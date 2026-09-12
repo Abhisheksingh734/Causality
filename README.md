@@ -6,6 +6,8 @@ An interactive system design simulator that runs in your browser. Build a system
 
 🔗 **[Try it live](https://causality-lab.vercel.app/)** — no signup, no install.
 
+![Causality in action — requests travelling through a client, server, cache and database, with live latency and hit-rate counters updating as they go](docs/demo.gif)
+
 ---
 
 ## Why I built this
