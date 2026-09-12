@@ -1222,7 +1222,16 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   onConnect: (connection) => {
+    const nodes = get().nodes
     set({ edges: addEdge({ ...connection, ...EDGE_DEFAULTS }, get().edges) })
+    track('connection_created', {
+      sourceComponentType: dataOf(
+        nodes.find((node) => node.id === connection.source),
+      )?.componentType,
+      targetComponentType: dataOf(
+        nodes.find((node) => node.id === connection.target),
+      )?.componentType,
+    })
   },
 
   addNode: (type, position) => {
@@ -1368,6 +1377,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   deleteNode: (nodeId) => {
     const state = get()
+    const node = state.nodes.find((item) => item.id === nodeId)
     set({
       nodes: state.nodes.filter((n) => n.id !== nodeId),
       // An edge to a node that no longer exists would strand any request
@@ -1378,6 +1388,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
     })
     get().pruneRequests()
+    if (node) track('node_deleted', { componentType: dataOf(node)!.componentType })
   },
 
   deleteEdge: (edgeId) => {

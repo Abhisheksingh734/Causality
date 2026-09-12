@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { track } from '../analytics'
 import { resetEdgeFlow } from '../edgeFlow'
 import { clearPersisted } from '../persistence'
 import { problemById } from '../problems'
@@ -364,6 +365,7 @@ function SimulationControls() {
                 clearAll()
                 clearPersisted()
                 resetEdgeFlow()
+                track('canvas_cleared')
               }
             }}
             className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"

@@ -4,10 +4,9 @@
  * Three properties this module guarantees, because the app has to keep working
  * without it:
  *
- *   1. No key, no analytics. `VITE_POSTHOG_KEY` is read from the environment at
- *      build time; when it is absent (every local `npm run dev` by default)
- *      nothing is loaded, nothing is sent, and every `track` call is a no-op
- *      that returns immediately.
+ *   1. No configuration, no analytics. The Vite-exposed key and host are read
+ *      from the environment at build time; in production their absence makes
+ *      every `track` call a no-op that returns immediately.
  *   2. `posthog-js` is imported dynamically, so it is in its own chunk and the
  *      module graph outside this file never depends on it. That also keeps the
  *      store importable from Node — the tests build `src/store.ts` for SSR and
@@ -55,8 +54,14 @@ type EventProperties = {
     status: 'graded' | 'no_baseline' | 'rps_mismatch' | 'insufficient_samples'
   }
   node_added: { componentType: ComponentType }
+  node_deleted: { componentType: ComponentType }
   node_killed: { componentType: ComponentType }
   node_revived: { componentType: ComponentType }
+  connection_created: {
+    sourceComponentType: ComponentType | undefined
+    targetComponentType: ComponentType | undefined
+  }
+  canvas_cleared: void
   /** `rps` is only meaningful for auto-fire; a manual click has no rate. */
   simulation_started: { mode: 'manual' | 'auto_fire'; rps?: number }
   cache_write_policy_set: { policy: WritePolicy }
@@ -96,9 +101,19 @@ function readEnv(name: string): string {
 }
 
 const PROJECT_KEY = readEnv('VITE_POSTHOG_KEY')
+const API_HOST = readEnv('VITE_POSTHOG_HOST')
 
-/** Override for EU projects (`https://eu.i.posthog.com`) or a reverse proxy. */
-const API_HOST = readEnv('VITE_POSTHOG_HOST') || 'https://us.i.posthog.com'
+if (import.meta.env.DEV && PROJECT_KEY === '') {
+  throw new Error(
+    'VITE_POSTHOG_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_POSTHOG_KEY is configured',
+  )
+}
+
+if (import.meta.env.DEV && API_HOST === '') {
+  throw new Error(
+    'VITE_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_POSTHOG_HOST is configured',
+  )
+}
 
 /* ------------------------------------------------------------------ *
  * State
@@ -106,7 +121,7 @@ const API_HOST = readEnv('VITE_POSTHOG_HOST') || 'https://us.i.posthog.com'
 
 let client: PostHog | null = null
 /** False the moment we know nothing will ever be sent. */
-let enabled = PROJECT_KEY !== ''
+let enabled = PROJECT_KEY !== '' && API_HOST !== ''
 let started = false
 
 type QueuedEvent = { name: AnalyticsEvent; properties?: Record<string, unknown> }
@@ -144,13 +159,21 @@ export function initAnalytics(): void {
         api_host: API_HOST,
         // Opt in to the current defaults rather than the legacy ones; the
         // explicit options below still win over whatever the bundle sets.
-        defaults: '2025-11-30',
+        defaults: '2026-05-30',
 
         // Autocapture gives clicks and pageviews for free. The custom events
         // are what actually answer questions, but this fills in the gaps.
         autocapture: true,
         capture_pageview: 'history_change',
         capture_pageleave: true,
+
+        // Error Tracking: send failures the app does not catch without adding
+        // component-level wrappers. Console messages remain out of scope.
+        capture_exceptions: {
+          capture_unhandled_errors: true,
+          capture_unhandled_rejections: true,
+          capture_console_errors: false,
+        },
 
         // ---- privacy ----
         // No cookies, no localStorage, no sessionStorage: identity lives in
